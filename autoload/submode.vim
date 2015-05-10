@@ -89,6 +89,7 @@ endif
 " let s:original_timeoutlen = &timeoutlen
 " let s:original_ttimeout = &ttimeout
 " let s:original_ttimeoutlen = &ttimeoutlen
+let s:count = ""
 
 if !exists('s:options_overridden_p')
   let s:options_overridden_p = 0
@@ -217,10 +218,14 @@ function! s:define_entering_mapping(submode, mode, options, lhs, rhs)  "{{{2
   \       s:map_options('e')
   \       s:named_key_before_action(a:submode)
   \       printf('<SID>on_executing_action(%s)', string(a:submode))
+  " remove count in normal mode
   execute s:map_command(a:mode, 'r')
   \       s:map_options('')
   \       s:named_key_prefix(a:submode)
-  \       s:named_key_leave(a:submode)
+  \       a:mode =~# '[ic]'? s:named_key_leave(a:submode)
+  \                        : printf('%s<SID>on_waiting_count(%s)<Return>',
+  \                          "'<esc>@=",string(a:submode))
+  "\       s:named_key_leave(a:submode)
   " NB: :map-<expr> cannot be used for s:on_leaving_submode(),
   "     because it uses some commands not allowed in :map-<expr>.
   execute s:map_command(a:mode, '')
@@ -249,14 +254,15 @@ function! s:define_submode_mapping(submode, mode, options, lhs, rhs)  "{{{2
   \       s:named_key_rhs(a:submode, a:lhs)
   \       a:rhs
 
-  let keys = s:split_keys(a:lhs)
-  for n in range(1, len(keys) - 1)
-    let first_n_keys = join(keys[:-(n+1)], '')
-    silent! execute s:map_command(a:mode, 'r')
-    \               s:map_options(s:filter_flags(a:options, 'bu'))
-    \               (s:named_key_prefix(a:submode) . first_n_keys)
-    \               s:named_key_leave(a:submode)
-  endfor
+  " SW: not map the unfinish queue, deal as usual
+  " let keys = s:split_keys(a:lhs)
+  " for n in range(1, len(keys) - 1)
+  "   let first_n_keys = join(keys[:-(n+1)], '')
+  "   silent! execute s:map_command(a:mode, 'r')
+  "   \               s:map_options(s:filter_flags(a:options, 'bu'))
+  "   \               (s:named_key_prefix(a:submode) . first_n_keys)
+  "   \               s:named_key_leave(a:submode)
+  " endfor
 
   return
 endfunction
@@ -268,21 +274,25 @@ function! s:undefine_submode_mapping(submode, mode, options, lhs)  "{{{2
   execute s:map_command(a:mode, 'u')
   \       s:map_options(s:filter_flags(a:options, 'b'))
   \       s:named_key_rhs(a:submode, a:lhs)
+  " SW: remove according to s:define_submode_mapping
+  execute s:map_command(a:mode, 'u')
+  \       s:map_options(s:filter_flags(a:options, 'b'))
+  \       (s:named_key_prefix(a:submode) . a:lhs)
 
-  let keys = s:split_keys(a:lhs)
-  for n in range(len(keys), 1, -1)
-    let first_n_keys = join(keys[:n-1], '')
-    execute s:map_command(a:mode, 'u')
-    \       s:map_options(s:filter_flags(a:options, 'b'))
-    \       s:named_key_prefix(a:submode) . first_n_keys
-    if s:longer_mapping_exists_p(s:named_key_prefix(a:submode), first_n_keys)
-      execute s:map_command(a:mode, 'r')
-      \       s:map_options(s:filter_flags(a:options, 'b'))
-      \       s:named_key_prefix(a:submode) . first_n_keys
-      \       s:named_key_leave(a:submode)
-      break
-    endif
-  endfor
+  " let keys = s:split_keys(a:lhs)
+  " for n in range(len(keys), 1, -1)
+  "   let first_n_keys = join(keys[:n-1], '')
+  "   execute s:map_command(a:mode, 'u')
+  "   \       s:map_options(s:filter_flags(a:options, 'b'))
+  "   \       s:named_key_prefix(a:submode) . first_n_keys
+  "   if s:longer_mapping_exists_p(s:named_key_prefix(a:submode), first_n_keys)
+  "     execute s:map_command(a:mode, 'r')
+  "     \       s:map_options(s:filter_flags(a:options, 'b'))
+  "     \       s:named_key_prefix(a:submode) . first_n_keys
+  "     \       s:named_key_leave(a:submode)
+  "     break
+  "   endif
+  " endfor
 
   return
 endfunction
@@ -440,8 +450,34 @@ function! s:on_executing_action(submode)  "{{{2
   return ''
 endfunction
 
-
-
+function! s:on_waiting_count(submode) "{{{2
+  let c = getchar(1)
+  if c is 0
+    return s:on_leaving_submode(a:submode)
+  elseif type(c) == 0 | let c = nr2char(c)
+  endif
+  if c =~# '^[1-9]$'
+    let s:count = ""
+    call getchar()
+    while c =~# '^\d$'
+      let s:count .= c
+      echo "count:" s:count
+      let c = getchar()
+      if type(c) == 0 | let c = nr2char(c) | endif
+    endwhile
+    let leftStr = s:get_left_feed_str()
+    call feedkeys(printf("%s\<Plug>%s",s:count,s:named_key_prefix(a:submode)[6:]).c)
+    if !empty(leftStr)
+      call feedkeys(leftStr)
+    endif
+  else
+    let ret = s:count
+    let s:count = ""
+    call s:on_leaving_submode(a:submode)
+    return ret
+  endif
+  return ""
+endfunction
 
 function! s:on_leaving_submode(submode)  "{{{2
   if (s:original_showmode || g:submode_always_show_submode)
@@ -466,7 +502,16 @@ function! s:on_leaving_submode(submode)  "{{{2
   return ''
 endfunction
 
-
+function! s:get_left_feed_str() "{{{2
+  let s = ""
+  let c = getchar(0)
+  while c isnot 0
+    if type(c) == 0 | let c = nr2char(c) | endif
+    let s.=c
+    let c = getchar(0)
+  endwhile
+  return s
+endfunction
 
 
 function! s:remove_flag(s, c)  "{{{2
