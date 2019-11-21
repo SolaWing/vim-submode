@@ -27,13 +27,13 @@
 " user's specification.
 "
 " map {key-to-enter}
-" \   <Plug>(submode-before-entering:{submode}:with:{key-to-enter})
-"    \<Plug>(submode-before-entering:{submode})
+" \   <Plug>(submode-b-e:{submode}:with:{key-to-enter})
+"    \<Plug>(submode-b-e:{submode})
 "    \<Plug>(submode-enter:{submode})
 "
-" MAP <Plug>(submode-before-entering:{submode}:with:{key-to-enter})
+" MAP <Plug>(submode-b-e:{submode}:with:{key-to-enter})
 " \   {anything}
-" noremap <Plug>(submode-before-entering:{submode})
+" noremap <Plug>(submode-b-e:{submode})
 " \       {tweaking 'timeout' and others}
 " map <Plug>(submode-enter:{submode})
 " \   <Plug>(submode-before-action:{submode})
@@ -391,14 +391,14 @@ endfunction
 
 
 function! s:named_key_before_entering(submode)  "{{{2
-  return printf('<Plug>(submode-before-entering:%s)', a:submode)
+  return printf('<Plug>(submode-b-e:%s)', a:submode)
 endfunction
 
 
 
 
 function! s:named_key_before_entering_with(submode, lhs)  "{{{2
-  return printf('<Plug>(submode-before-entering:%s:with:%s)', a:submode, a:lhs)
+  return printf('<Plug>(submode-b-e:%s:with:%s)', a:submode, a:lhs)
 endfunction
 
 
